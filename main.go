@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 )
 
 func catch(e error) {
@@ -14,29 +15,47 @@ func catch(e error) {
 	}
 }
 
-func main(){
+func main() {
 	f, err := os.Open("./messages.txt")
 	catch(err)
 	defer f.Close()
-	getLinesChannel(f)
+
+	for msg := range getLinesChannel(f) {
+		fmt.Println("read: " + msg)
+	}
 }
 
 func getLinesChannel(f io.ReadCloser) <-chan string {
 
 	messages := make(chan string)
 
-	currentLineContents := ""
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+
+	go func() {
+		wg.Wait()
+		close(messages)
+	}()
+
+	go readByBytes(messages, &wg, f)
+
+	return messages
+}
+
+func readByBytes(ch chan string, wg *sync.WaitGroup, f io.ReadCloser) {
+	defer wg.Done()
+
+	currentLine := ""
+
 	for {
 		buffer := make([]byte, 8)
 		n, err := f.Read(buffer)
-
-
-
 		if err != nil {
-            		if currentLineContents != "" {
-				fmt.Printf("read: %s\n", currentLineContents)
-				currentLineContents = ""
-		}
+			if currentLine != "" {
+				ch <- currentLine
+				currentLine = ""
+			}
 			if errors.Is(err, io.EOF) {
 				break
 			}
@@ -45,12 +64,10 @@ func getLinesChannel(f io.ReadCloser) <-chan string {
 		}
 		str := string(buffer[:n])
 		parts := strings.Split(str, "\n")
-		for i := 0; i < len(parts)-1; i++ {
-			fmt.Printf("read: %s%s\n", currentLineContents, parts[i])
-			currentLineContents = ""
+		for i := range len(parts) - 1 {
+			ch <- currentLine + parts[i]
+			currentLine = ""
 		}
-		currentLineContents += parts[len(parts)-1]
-
+		currentLine += parts[len(parts)-1]
 	}
-	return messages
 }
