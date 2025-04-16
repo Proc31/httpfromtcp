@@ -46,6 +46,7 @@ func getLinesChannel(f io.ReadCloser) <-chan string {
 			if err != nil {
 				if currentLine != "" {
 					messages <- currentLine
+					currentLine = ""
 				}
 				if errors.Is(err, io.EOF) {
 					break
